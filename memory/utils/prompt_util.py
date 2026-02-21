@@ -46,6 +46,12 @@ You are an expert at analyzing conversations to extract structured memory.
         - valid_at: When the fact became true (e.g., law enactment, discovery)
         - invalid_at: When it becomes false (e.g., repeal, disproven) or empty if still true
         - Default: valid_at = conversation time, invalid_at = "" for timeless facts
+
+        **Keywords Extraction:**
+        - Extract keywords only if content contains user preferences, opinions, or topic tags
+        - For neutral facts, leave keywords as empty array
+        - Keywords should be lowercase, can be in English or Chinese
+        - Examples: ["python", "preference"], ["java", "dislike"]
         """,
 
         MemoryType.EPISODIC.name.lower(): """
@@ -58,6 +64,11 @@ You are an expert at analyzing conversations to extract structured memory.
         - valid_at: Event start/occurrence time
         - invalid_at: Event end time or empty if instantaneous
         - Extract explicit times: "at 3 PM", "last Monday", "from X to Y"
+
+        **Keywords Extraction:**
+        - Extract keywords for user preferences, opinions, or topic tags mentioned in the event
+        - For neutral events, leave keywords as empty array
+        - Keywords should be lowercase, can be in English or Chinese
         """,
 
         MemoryType.PROCEDURAL.name.lower(): """
@@ -80,7 +91,8 @@ You are an expert at analyzing conversations to extract structured memory.
             {
                 "content": "Clear factual statement",
                 "valid_at": "timestamp or empty",
-                "invalid_at": "timestamp or empty"
+                "invalid_at": "timestamp or empty",
+                "keywords": ["keyword1", "keyword2"]
             }
         ]
         """,
@@ -90,7 +102,8 @@ You are an expert at analyzing conversations to extract structured memory.
             {
                 "content": "Narrative event description",
                 "valid_at": "event start timestamp",
-                "invalid_at": "event end timestamp or empty"
+                "invalid_at": "event end timestamp or empty",
+                "keywords": ["keyword1", "keyword2"]
             }
         ]
         """,
@@ -100,7 +113,8 @@ You are an expert at analyzing conversations to extract structured memory.
             {
                 "content": "Actionable instructions",
                 "valid_at": "procedure effective timestamp",
-                "invalid_at": "procedure expiration timestamp or empty"
+                "invalid_at": "procedure expiration timestamp or empty",
+                "keywords": []
             }
         ]
         """
@@ -163,22 +177,22 @@ You are an expert at analyzing conversations to extract structured memory.
         if MemoryType.SEMANTIC.name.lower() in types_to_extract:
             examples.append("""
             **Semantic Example:**
-            Input: "Python lists are mutable and support various operations."
-            Output: {"semantic": [{"content": "Python lists are mutable data structures", "valid_at": "2024-01-15T10:00:00", "invalid_at": ""}]}
+            Input: "Python lists are mutable and support various operations. I prefer Python over Java."
+            Output: {"semantic": [{"content": "Python lists are mutable data structures", "valid_at": "2024-01-15T10:00:00", "invalid_at": "", "keywords": ["python", "preference"]}]}
             """)
 
         if MemoryType.EPISODIC.name.lower() in types_to_extract:
             examples.append("""
             **Episodic Example:**
-            Input: "I deployed the new feature yesterday afternoon."
-            Output: {"episodic": [{"content": "User deployed new feature", "valid_at": "2024-01-14T14:00:00", "invalid_at": "2024-01-14T18:00:00"}]}
+            Input: "I deployed the new feature yesterday afternoon. I used Python for this task."
+            Output: {"episodic": [{"content": "User deployed new feature", "valid_at": "2024-01-14T14:00:00", "invalid_at": "2024-01-14T18:00:00", "keywords": ["python", "deployment"]}]}
             """)
 
         if MemoryType.PROCEDURAL.name.lower() in types_to_extract:
             examples.append("""
             **Procedural Example:**
             Input: "To debug API errors: 1) Check logs 2) Verify endpoints 3) Test connectivity."
-            Output: {"procedural": [{"content": "API error debugging: 1. Check logs 2. Verify endpoints 3. Test connectivity", "valid_at": "2024-01-15T10:00:00", "invalid_at": ""}]}
+            Output: {"procedural": [{"content": "API error debugging: 1. Check logs 2. Verify endpoints 3. Test connectivity", "valid_at": "2024-01-15T10:00:00", "invalid_at": "", "keywords": []}]}
             """)
 
         return "\n".join(examples)

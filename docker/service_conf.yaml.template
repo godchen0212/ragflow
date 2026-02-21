@@ -164,3 +164,20 @@ user_default_llm:
 #   secret_id: '${TENCENT_SECRET_ID}'
 #   secret_key: '${TENCENT_SECRET_KEY}'
 #   region: '${TENCENT_REGION}'
+# mem0:
+#   llm:
+#     provider: 'openai'
+#     config:
+#       model: 'gpt-4o-mini'
+#       api_key: '${MEM0_LLM_API_KEY}'
+#   embedder:
+#     provider: 'openai'
+#     config:
+#       model: 'text-embedding-3-small'
+#       api_key: '${MEM0_EMBEDDER_API_KEY}'
+#   vector_store:
+#     provider: 'elasticsearch'
+#     config:
+#       url: 'http://${ES_HOST:-es01}:9200'
+#       collection_name: 'ragflow_mem0'
+#       embedding_dims: 1536

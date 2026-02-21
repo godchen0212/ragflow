@@ -71,6 +71,7 @@ class ESConnection(ESConnectionBase):
             "forget_at": message["forget_at"],
             "status_int": 1 if message["status"] else 0,
             "zone_id": message.get("zone_id", 0),
+            "keywords": message.get("keywords", []),
             "content_ltks": message["content"],
             "tokenized_content_ltks": fine_grained_tokenize(tokenize(message["content"])),
             f"q_{len(message['content_embed'])}_vec": message["content_embed"],
@@ -101,6 +102,7 @@ class ESConnection(ESConnectionBase):
             "status": bool(int(doc["status_int"])),
             "content": doc.get("content_ltks", ""),
             "content_embed": doc.get(embd_field_name, []) if embd_field_name else [],
+            "keywords": doc.get("keywords", []),
         }
         if doc.get("id"):
             message["id"] = doc["id"]

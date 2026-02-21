@@ -239,7 +239,8 @@ async def search_message():
     memory_ids = args.getlist("memory_id")
     if len(memory_ids) == 1 and ',' in memory_ids[0]:
         memory_ids = memory_ids[0].split(',')
-    query = args.get("query")
+    query = args.get("query", "")
+    filter_keywords = args.get("filter_keywords", "")
     similarity_threshold = float(args.get("similarity_threshold", 0.2))
     keywords_similarity_weight = float(args.get("keywords_similarity_weight", 0.7))
     top_n = int(args.get("top_n", 5))
@@ -253,6 +254,7 @@ async def search_message():
     }
     params = {
         "query": query,
+        "filter_keywords": filter_keywords,
         "similarity_threshold": similarity_threshold,
         "keywords_similarity_weight": keywords_similarity_weight,
         "top_n": top_n

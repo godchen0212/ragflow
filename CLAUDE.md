@@ -1,116 +1,100 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working with this RAGFlow repository.
 
 ## Project Overview
 
-RAGFlow is an open-source RAG (Retrieval-Augmented Generation) engine based on deep document understanding. It's a full-stack application with:
-- Python backend (Flask-based API server)
-- React/TypeScript frontend (built with UmiJS)
-- Microservices architecture with Docker deployment
-- Multiple data stores (MySQL, Elasticsearch/Infinity, Redis, MinIO)
+RAGFlow: Open-source RAG engine with deep document understanding.
+- Backend: Python (Quart async API server)
+- Frontend: React/TypeScript (Vite + UmiJS)
+- Data stores: MySQL, Elasticsearch/Infinity/OceanBase, Redis, MinIO
 
 ## Architecture
 
-### Backend (`/api/`)
-- **Main Server**: `api/ragflow_server.py` - Flask application entry point
-- **Apps**: Modular Flask blueprints in `api/apps/` for different functionalities:
-  - `kb_app.py` - Knowledge base management
-  - `dialog_app.py` - Chat/conversation handling
-  - `document_app.py` - Document processing
-  - `canvas_app.py` - Agent workflow canvas
-  - `file_app.py` - File upload/management
-- **Services**: Business logic in `api/db/services/`
-- **Models**: Database models in `api/db/db_models.py`
+### Two-Process Model
+- **API Server** (`api/ragflow_server.py`) - Quart HTTP server
+- **Task Executors** (`rag/svr/task_executor.py`) - Workers for document ingestion via Redis streams
 
-### Core Processing (`/rag/`)
-- **Document Processing**: `deepdoc/` - PDF parsing, OCR, layout analysis
-- **LLM Integration**: `rag/llm/` - Model abstractions for chat, embedding, reranking
-- **RAG Pipeline**: `rag/flow/` - Chunking, parsing, tokenization
-- **Graph RAG**: `rag/graphrag/` - Knowledge graph construction and querying
+### Backend (`/api/`)
+- Blueprint auto-registration: `api/apps/__init__.py` discovers `*_app.py` files
+- Routes: `/{API_VERSION}/{page_name}` (e.g., `/v1/kb`)
+- Database: Peewee ORM with MySQL/Postgres/OceanBase
+- Services in `api/db/services/` extend `CommonService`
 
 ### Agent System (`/agent/`)
-- **Components**: Modular workflow components (LLM, retrieval, categorize, etc.)
-- **Templates**: Pre-built agent workflows in `agent/templates/`
-- **Tools**: External API integrations (Tavily, Wikipedia, SQL execution, etc.)
+- DAG-based workflow: `agent/canvas.py` loads JSON DSL
+- Components auto-discovered in `agent/component/`
+- Tools in `agent/tools/` (Tavily, Wikipedia, GitHub, SQL, etc.)
+
+### Task Executor
+- Reads tasks from Redis → fetches files from MinIO → parses → chunks → stores
+- Parser types: `naive`, `paper`, `book`, `laws`, etc.
+- Task types: `dataflow`, `raptor`, `graphrag`, `mindmap`, `memory`
+
+### Memory System (`/memory/`)
+- Extracts semantic/episodic/procedural memories from conversations
+- **Keywords**: User preferences/opinions stored as structured metadata (not vectorized)
+- **Filtering**: Exact keyword matching via `filter_by_keywords()` with OR logic
+- **Backends**: Native (ES/Infinity/OceanBase) or mem0
+- **API**: `GET /v1/messages/search?filter_keywords=python,fastapi`
+- See `MEMORY_KEYWORDS_DESIGN.md` for details
+
+### Core Processing (`/rag/`)
+- `rag/llm/` - LLM abstractions (chat, embedding, rerank, vision, TTS, STT)
+- `rag/flow/` - Chunking, parsing, tokenization
+- `rag/graphrag/` - Knowledge graph construction
+
+### Configuration
+
+`common/settings.py` merges: `conf/service_conf.yaml` → environment variables → Docker env vars
+- `conf/service_conf.yaml` - Primary config (DB, Redis, MinIO, ES, LLM)
+- `docker/.env` - Environment overrides
 
 ### Frontend (`/web/`)
-- React/TypeScript with UmiJS framework
-- Ant Design + shadcn/ui components
-- State management with Zustand
-- Tailwind CSS for styling
+React 18 + TypeScript, Ant Design + Tailwind, Zustand + React Query
 
-## Common Development Commands
+### SDK (`/sdk/`)
+Python SDK in `sdk/python/ragflow_sdk/`
 
-### Backend Development
+## Development Commands
+
+### Backend
 ```bash
-# Install Python dependencies
 uv sync --python 3.12 --all-extras
-uv run download_deps.py
-pre-commit install
-
-# Start dependent services
 docker compose -f docker/docker-compose-base.yml up -d
-
-# Run backend (requires services to be running)
-source .venv/bin/activate
-export PYTHONPATH=$(pwd)
+# Add to /etc/hosts: 127.0.0.1 es01 infinity mysql minio redis
 bash docker/launch_backend_service.sh
-
-# Run tests
-uv run pytest
-
-# Linting
-ruff check
-ruff format
+pkill -f "ragflow_server.py|task_executor.py"  # Stop
 ```
 
-### Frontend Development
+### Testing
 ```bash
-cd web
-npm install
-npm run dev        # Development server
-npm run build      # Production build
-npm run lint       # ESLint
-npm run test       # Jest tests
+uv run pytest                                    # all tests
+uv run pytest test/testcases/test_xxx.py        # specific file
+uv run pytest -m p1                             # by priority
 ```
 
-### Docker Development
+### Linting
 ```bash
-# Full stack with Docker
-cd docker
-docker compose -f docker-compose.yml up -d
+ruff check && ruff format
+pre-commit run --all-files
+```
 
-# Check server status
-docker logs -f ragflow-server
+### Frontend
+```bash
+cd web && npm install && npm run dev
+```
 
-# Rebuild images
+### Docker
+```bash
+docker compose -f docker/docker-compose.yml up -d
 docker build --platform linux/amd64 -f Dockerfile -t infiniflow/ragflow:nightly .
 ```
 
-## Key Configuration Files
+## Key Notes
 
-- `docker/.env` - Environment variables for Docker deployment
-- `docker/service_conf.yaml.template` - Backend service configuration
-- `pyproject.toml` - Python dependencies and project configuration
-- `web/package.json` - Frontend dependencies and scripts
-
-## Testing
-
-- **Python**: pytest with markers (p1/p2/p3 priority levels)
-- **Frontend**: Jest with React Testing Library
-- **API Tests**: HTTP API and SDK tests in `test/` and `sdk/python/test/`
-
-## Database Engines
-
-RAGFlow supports switching between Elasticsearch (default) and Infinity:
-- Set `DOC_ENGINE=infinity` in `docker/.env` to use Infinity
-- Requires container restart: `docker compose down -v && docker compose up -d`
-
-## Development Environment Requirements
-
-- Python 3.10-3.12
-- Node.js >=18.20.4
-- Docker & Docker Compose
-- uv package manager
-- 16GB+ RAM, 50GB+ disk space
+- **Database Engine**: Set `DOC_ENGINE` in `docker/.env` (elasticsearch/infinity/oceanbase)
+- **Python**: >=3.12, <3.15
+- **Node.js**: >=18.20.4
+- **Docker**: >=24.0.0, Compose >=v2.26.1
+- **HuggingFace Mirror (China)**: `export HF_ENDPOINT=https://hf-mirror.com`

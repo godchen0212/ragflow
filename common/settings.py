@@ -285,6 +285,17 @@ def init_settings():
     elif lower_case_doc_engine in ["oceanbase", "seekdb"]:
         msgStoreConn = memory_ob_conn.OBConnection()
 
+    # ── memory store backend selection ──
+    from memory.services.messages import set_store as _set_memory_store
+    _memory_store_type = os.getenv("MEMORY_STORE_TYPE", "native").lower()
+    if _memory_store_type == "mem0":
+        from memory.services.mem0_store import Mem0MemoryStore
+        _mem0_cfg = get_base_config("mem0", {})
+        _set_memory_store(Mem0MemoryStore(_mem0_cfg))
+    else:
+        from memory.services.native_store import NativeMemoryStore
+        _set_memory_store(NativeMemoryStore(msgStoreConn))
+
     global AZURE, S3, MINIO, OSS, GCS
     if STORAGE_IMPL_TYPE in ['AZURE_SPN', 'AZURE_SAS']:
         AZURE = get_base_config("azure", {})

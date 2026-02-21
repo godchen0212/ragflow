@@ -85,7 +85,8 @@ async def save_to_memory(memory_id: str, message_dict: dict):
         "valid_at": content["valid_at"],
         "invalid_at": content["invalid_at"] if content["invalid_at"] else None,
         "forget_at": None,
-        "status": True
+        "status": True,
+        "keywords": content.get("keywords", [])
     } for content in extracted_content]]
     return await embed_and_save(memory, message_list)
 
@@ -126,7 +127,8 @@ async def save_extracted_to_memory_only(memory_id: str, message_dict, source_mes
         "valid_at": content["valid_at"],
         "invalid_at": content["invalid_at"] if content["invalid_at"] else None,
         "forget_at": None,
-        "status": True
+        "status": True,
+        "keywords": content.get("keywords", [])
     } for content in extracted_content]
     if not message_list:
         msg = "No memory extracted from raw message."
@@ -165,6 +167,7 @@ async def extract_by_llm(tenant_id: str, llm_id: str, extract_conf: dict, memory
         "content": extracted_content["content"],
         "valid_at": format_iso_8601_to_ymd_hms(extracted_content["valid_at"]),
         "invalid_at": format_iso_8601_to_ymd_hms(extracted_content["invalid_at"]) if extracted_content.get("invalid_at") else "",
+        "keywords": extracted_content.get("keywords", []),
         "message_type": message_type
     } for message_type, extracted_content_list in res_json.items() for extracted_content in extracted_content_list]
 
@@ -222,7 +225,8 @@ def query_message(filter_dict: dict, params: dict):
         "session_id": optional
     }
     :param params: {
-        "query": question str,
+        "query": question str (optional if filter_keywords provided),
+        "filter_keywords": List[str] (optional, for exact keyword filtering),
         "similarity_threshold": float,
         "keywords_similarity_weight": float,
         "top_n": int
@@ -236,16 +240,36 @@ def query_message(filter_dict: dict, params: dict):
     condition_dict = {k: v for k, v in filter_dict.items() if v}
     uids = [memory.tenant_id for memory in memory_list]
 
-    question = params["query"]
-    question = question.strip()
+    # If filter_keywords provided, use exact keyword filtering
+    filter_keywords = params.get("filter_keywords")
+    if filter_keywords:
+        if not uids:
+            return []
+        if isinstance(filter_keywords, str):
+            filter_keywords = [kw.strip() for kw in filter_keywords.split(",")]
+        # Use keyword filtering instead of vector search
+        results = MessageService.filter_by_keywords(filter_keywords, uids[0], memory_ids, params.get("top_n", 10))
+        if not results:
+            return []
+        # Apply condition_dict filters to results (filter out None values first)
+        for key, val in condition_dict.items():
+            if key != "memory_id" and val is not None:
+                results = [r for r in results if r.get(key) == val]
+        return results
+
+    # Otherwise, use vector + text search
+    question = params.get("query", "").strip()
+    if not question:
+        return []
+
     memory = memory_list[0]
     embd_model = LLMBundle(memory.tenant_id, llm_type=LLMType.EMBEDDING, llm_name=memory.embd_id)
-    match_dense = get_vector(question, embd_model, similarity=params["similarity_threshold"])
-    match_text, _ = MsgTextQuery().question(question, min_match=params["similarity_threshold"])
+    match_dense = get_vector(question, embd_model, similarity=params.get("similarity_threshold", 0.2))
+    match_text, _ = MsgTextQuery().question(question, min_match=params.get("similarity_threshold", 0.2))
     keywords_similarity_weight = params.get("keywords_similarity_weight", 0.7)
-    fusion_expr = FusionExpr("weighted_sum", params["top_n"], {"weights": ",".join([str(1 - keywords_similarity_weight), str(keywords_similarity_weight)])})
+    fusion_expr = FusionExpr("weighted_sum", params.get("top_n", 10), {"weights": ",".join([str(1 - keywords_similarity_weight), str(keywords_similarity_weight)])})
 
-    return MessageService.search_message(memory_ids, condition_dict, uids, [match_text, match_dense, fusion_expr], params["top_n"])
+    return MessageService.search_message(memory_ids, condition_dict, uids, [match_text, match_dense, fusion_expr], params.get("top_n", 10))
 
 
 def init_message_id_sequence():
