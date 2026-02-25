@@ -175,6 +175,9 @@ test = [
     "pycryptodomex==3.20.0",
     "codecov>=2.1.13",
 ]
+mem0 = [
+    "mem0ai>=0.1.0",
+]
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"

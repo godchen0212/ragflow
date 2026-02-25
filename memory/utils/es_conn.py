@@ -46,6 +46,8 @@ class ESConnection(ESConnectionBase):
                 if use_tokenized_content:
                     return "tokenized_content_ltks"
                 return "content_ltks"
+            case "keywords":
+                return "keywords_kwd"
             case _:
                 return field_name
 
@@ -73,6 +75,7 @@ class ESConnection(ESConnectionBase):
             "zone_id": message.get("zone_id", 0),
             "content_ltks": message["content"],
             "tokenized_content_ltks": fine_grained_tokenize(tokenize(message["content"])),
+            "keywords_kwd": message.get("keywords", []),
             f"q_{len(message['content_embed'])}_vec": message["content_embed"],
         }
         return storage_doc
@@ -101,6 +104,7 @@ class ESConnection(ESConnectionBase):
             "status": bool(int(doc["status_int"])),
             "content": doc.get("content_ltks", ""),
             "content_embed": doc.get(embd_field_name, []) if embd_field_name else [],
+            "keywords": doc.get("keywords_kwd", []),
         }
         if doc.get("id"):
             message["id"] = doc["id"]
@@ -485,6 +489,52 @@ class ESConnection(ESConnectionBase):
                 self.logger.error("ESConnection.update got exception: " + str(e) + "\n".join(scripts))
                 break
         return False
+
+    def filter_by_keywords(self, select_fields: list[str], index_name: str, memory_id: str, keywords: list[str], top_n: int = 20) -> dict | None:
+        """Filter messages by keywords using ES terms query.
+
+        Args:
+            select_fields: Fields to return in results.
+            index_name: Index name to search.
+            memory_id: Memory ID for filtering.
+            keywords: List of keywords to filter by (OR logic).
+            top_n: Maximum number of results to return.
+
+        Returns:
+            ES search response or None if index doesn't exist.
+        """
+        if not self.index_exist(index_name):
+            return None
+
+        bool_query = Q("bool", must=[], filter=[])
+        bool_query.filter.append(Q("term", memory_id=memory_id))
+        bool_query.must.append(Q("terms", keywords_kwd=keywords))
+
+        s = Search()
+        s = s.query(bool_query)
+        s = s[:top_n]
+        q = s.to_dict()
+
+        for i in range(ATTEMPT_TIME):
+            try:
+                res = self.es.search(index=index_name, body=q, timeout="600s", track_total_hits=True, _source=True)
+                if str(res.get("timed_out", "")).lower() == "true":
+                    raise Exception("Es Timeout.")
+                self.logger.debug(f"ESConnection.filter_by_keywords {index_name} res: " + str(res))
+                return res
+            except ConnectionTimeout:
+                self.logger.exception("ES request timeout")
+                self._connect()
+                continue
+            except NotFoundError as e:
+                self.logger.debug(f"ESConnection.filter_by_keywords {index_name} query: " + str(q) + str(e))
+                return None
+            except Exception as e:
+                self.logger.exception(f"ESConnection.filter_by_keywords {index_name} query: " + str(q) + str(e))
+                raise e
+
+        self.logger.error(f"ESConnection.filter_by_keywords timeout for {ATTEMPT_TIME} times!")
+        raise Exception("ESConnection.filter_by_keywords timeout.")
 
     def delete(self, condition: dict, index_name: str, memory_id: str) -> int:
         assert "_id" not in condition

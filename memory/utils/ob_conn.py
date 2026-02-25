@@ -46,6 +46,7 @@ COLUMN_DEFINITIONS: list[Column] = [
     Column("status_int", Integer, nullable=False, server_default="1", comment="status: 1 for active, 0 for inactive"),
     Column("content_ltks", LONGTEXT, nullable=True, comment="content with tokenization"),
     Column("tokenized_content_ltks", LONGTEXT, nullable=True, comment="fine-grained tokenized content"),
+    Column("keywords_kwd", LONGTEXT, nullable=True, comment="extracted keywords as JSON array"),
 ]
 
 COLUMN_NAMES: list[str] = [col.name for col in COLUMN_DEFINITIONS]
@@ -446,6 +447,48 @@ class OBConnection(OBConnectionBase):
             f"  LIMIT {limit}"
         )
         self.logger.debug("OBConnection.get_missing_field_message sql: %s", sql)
+
+        res = self.client.perform_raw_text_sql(sql)
+        rows = res.fetchall()
+
+        result = SearchResult(total=len(rows), messages=[])
+        for row in rows:
+            result.messages.append(self._row_to_entity(row, db_output_fields))
+
+        return result
+
+    def filter_by_keywords(self, select_fields: list[str], index_name: str, memory_id: str, keywords: list[str], top_n: int = 20):
+        """Filter messages by keywords using SQL LIKE conditions.
+
+        Args:
+            select_fields: Fields to return in results.
+            index_name: Index name to search.
+            memory_id: Memory ID for filtering.
+            keywords: List of keywords to filter by (OR logic).
+            top_n: Maximum number of results to return.
+
+        Returns:
+            SearchResult with matching messages or empty result if table doesn't exist.
+        """
+        if not self._check_table_exists_cached(index_name):
+            return SearchResult(total=0, messages=[])
+
+        db_output_fields = [self.convert_field_name(f) for f in select_fields]
+        fields_expr = ", ".join(db_output_fields)
+
+        # Build filter: memory_id = X AND (keywords_kwd LIKE '%kw1%' OR keywords_kwd LIKE '%kw2%' OR ...)
+        keyword_conditions = " OR ".join([f"keywords_kwd LIKE '%{escape_string(kw)}%'" for kw in keywords])
+        where_clause = f"memory_id = {get_value_str(memory_id)}"
+        if keyword_conditions:
+            where_clause += f" AND ({keyword_conditions})"
+
+        sql = (
+            f"SELECT {fields_expr}"
+            f"  FROM {index_name}"
+            f"  WHERE {where_clause}"
+            f"  LIMIT {top_n}"
+        )
+        self.logger.debug("OBConnection.filter_by_keywords sql: %s", sql)
 
         res = self.client.perform_raw_text_sql(sql)
         rows = res.fetchall()

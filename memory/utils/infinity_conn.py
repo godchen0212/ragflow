@@ -48,6 +48,8 @@ class InfinityConnection(InfinityConnectionBase):
                 return "message_type_kwd"
             case "status":
                 return "status_int"
+            case "keywords":
+                return "keywords_kwd"
             case "content_embed":
                 if not table_fields:
                     raise Exception("Can't convert 'content_embed' to vector field name with empty table fields.")
@@ -332,6 +334,47 @@ class InfinityConnection(InfinityConnectionBase):
         mem_res, _ = builder.option({"total_hits_count": True}).to_df()
         res = self.concat_dataframes(mem_res, output_fields)
         res.head(limit)
+        self.connPool.release_conn(inf_conn)
+        return res
+
+    def filter_by_keywords(self, select_fields: list[str], index_name: str, memory_id: str, keywords: list[str], top_n: int = 20):
+        """Filter messages by keywords using Infinity LIKE conditions.
+
+        Args:
+            select_fields: Fields to return in results.
+            index_name: Index name to search.
+            memory_id: Memory ID for filtering.
+            keywords: List of keywords to filter by (OR logic).
+            top_n: Maximum number of results to return.
+
+        Returns:
+            DataFrame with matching results or empty DataFrame if table doesn't exist.
+        """
+        inf_conn = self.connPool.get_conn()
+        db_instance = inf_conn.get_database(self.dbName)
+        table_name = f"{index_name}_{memory_id}"
+        try:
+            table_instance = db_instance.get_table(table_name)
+        except Exception:
+            self.logger.warning(f"Table not found: {table_name}")
+            self.connPool.release_conn(inf_conn)
+            return pd.DataFrame()
+
+        column_name_list = [r[0] for r in table_instance.show_columns().rows()]
+        output_fields = [self.convert_message_field_to_infinity(f, column_name_list) for f in select_fields]
+        builder = table_instance.output(output_fields)
+
+        # Build filter: memory_id = X AND (keywords LIKE 'kw1' OR keywords LIKE 'kw2' OR ...)
+        filter_parts = [f"memory_id = '{memory_id}'"]
+        if keywords:
+            keyword_conditions = " OR ".join([f"keywords_kwd LIKE '%{kw}%'" for kw in keywords])
+            filter_parts.append(f"({keyword_conditions})")
+        filter_cond = " AND ".join(filter_parts)
+        builder.filter(filter_cond)
+        builder.limit(top_n)
+
+        mem_res, _ = builder.option({"total_hits_count": True}).to_df()
+        res = self.concat_dataframes(mem_res, output_fields)
         self.connPool.release_conn(inf_conn)
         return res
 

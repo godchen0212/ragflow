@@ -32,6 +32,7 @@ from memory.services.messages import MessageService
 from memory.services.query import MsgTextQuery, get_vector
 from memory.utils.prompt_util import PromptAssembler
 from memory.utils.msg_util import get_json_result_from_llm_response
+from memory.utils.keyword_extractor import extract_keywords
 from rag.utils.redis_conn import REDIS_CONN
 
 
@@ -176,6 +177,9 @@ async def embed_and_save(memory, message_list: list[dict], task_id: str=None):
     vector_list, _ = embedding_model.encode([msg["content"] for msg in message_list])
     for idx, msg in enumerate(message_list):
         msg["content_embed"] = vector_list[idx]
+        # Extract keywords if not already present
+        if "keywords" not in msg:
+            msg["keywords"] = extract_keywords(msg["content"])
     if task_id:
         TaskService.update_progress(task_id, {"progress": 0.85, "progress_msg": timestamp_to_date(current_timestamp())+ " " + "Embedded extracted content."})
     vector_dimension = len(vector_list[0])

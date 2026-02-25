@@ -263,6 +263,36 @@ class MessageService:
         return list(docs.values())
 
     @classmethod
+    def filter_by_keywords(cls, uid: str, memory_id: str, keywords: List[str], top_n: int = 20):
+        """Filter messages by keywords.
+
+        Args:
+            uid: User/tenant ID.
+            memory_id: Memory configuration ID.
+            keywords: List of keywords to filter by (OR logic).
+            top_n: Maximum number of results to return.
+
+        Returns:
+            List of message dictionaries matching the keywords.
+        """
+        select_fields = [
+            "message_id", "message_type", "source_id", "memory_id", "user_id", "agent_id", "session_id",
+            "valid_at", "invalid_at", "forget_at", "status", "content", "keywords"
+        ]
+        _index_name = index_name(uid)
+        res = settings.msgStoreConn.filter_by_keywords(
+            select_fields=select_fields,
+            index_name=_index_name,
+            memory_id=memory_id,
+            keywords=keywords,
+            top_n=top_n
+        )
+        if not res:
+            return []
+        docs = settings.msgStoreConn.get_fields(res, select_fields)
+        return list(docs.values())
+
+    @classmethod
     def get_by_message_id(cls, memory_id: str, message_id: int, uid: str):
         index = index_name(uid)
         doc_id = f'{memory_id}_{message_id}'

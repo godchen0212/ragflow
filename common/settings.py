@@ -81,6 +81,7 @@ OAUTH_CONFIG = None
 DOC_ENGINE = os.getenv('DOC_ENGINE', 'elasticsearch')
 DOC_ENGINE_INFINITY = (DOC_ENGINE.lower() == "infinity")
 DOC_ENGINE_OCEANBASE = (DOC_ENGINE.lower() == "oceanbase")
+MEMORY_BACKEND = os.getenv("MEMORY_BACKEND", "native")  # "native" | "mem0"
 
 
 docStoreConn = None
